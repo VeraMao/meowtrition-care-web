@@ -1,7 +1,7 @@
 // Deterministic statistics for the Care Review. The AI never computes numbers;
 // it only writes about what this file returns. Shared by the browser and api/care-review.ts.
 import type {
-  Cat, DayValue, FeedingLog, HydrationLog, LitterLog, MedicationLog, MedStatus, Metrics, Symptom, VetVisit, WeightLog,
+  Cat, DayValue, FeedingLog, HydrationLog, LitterLog, Medication, MedicationLog, Metrics, Symptom, VetVisit, WeightLog,
 } from './types'
 import { URGENT_SYMPTOMS } from './types'
 import { addDays, localDate } from './time'
@@ -33,6 +33,7 @@ export interface MetricsInput {
   weights: WeightLog[]
   visits: VetVisit[]
   medLogs?: MedicationLog[]
+  medications?: Medication[]
   today?: string
 }
 
@@ -77,11 +78,16 @@ export function computeMetrics(i: MetricsInput): Metrics {
     .sort()[0] ?? null
 
   // Medications: count each logged dose by status, grouped by medication (name as recorded at the time).
-  const medMap = new Map<string, { name: string; dose: string | null; counts: Record<MedStatus, number> }>()
+  type MedEntry = NonNullable<Metrics['meds']>[number]
+  const medMap = new Map<string, MedEntry>()
+  const courses = new Map((i.medications ?? []).filter(m => m.cat_id === cat.id).map(m => [m.id, m]))
   for (const l of mine(i.medLogs ?? []).filter(l => inWindow(l.given_at)).sort((a, b) => a.given_at.localeCompare(b.given_at))) {
     const key = l.medication_id ?? `name:${l.med_name_snapshot}`
-    const e = medMap.get(key) ?? { name: l.med_name_snapshot, dose: l.dose_snapshot, counts: { given: 0, missed: 0, refused: 0, partial: 0, vomited: 0 } }
+    const c = l.medication_id ? courses.get(l.medication_id) : undefined
+    const e = medMap.get(key) ?? { name: l.med_name_snapshot, dose: l.dose_snapshot, counts: { given: 0, missed: 0, refused: 0, partial: 0, vomited: 0 }, doses: [],
+      how_often: c?.how_often ?? null, course_start: c?.start_date ?? null, course_end: c?.end_date ?? null }
     e.counts[l.status] += 1
+    e.doses!.push({ date: localDate(l.given_at, tz), status: l.status })
     medMap.set(key, e)
   }
 

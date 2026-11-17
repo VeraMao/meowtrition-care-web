@@ -7,3 +7,4 @@ dist
 .DS_Store
 *.tsbuildinfo
 _to_delete
+scripts/fixtures/*.local.json

@@ -104,6 +104,8 @@ describe('medications', () => {
   it('counts doses by status per medication, only this cat, only this week', () => {
     const d = (o: object) => ({ id: Math.random().toString(), cat_id: 'c1', medication_id: 'm1', given_at: '2026-11-12T14:00:00Z', status: 'given' as const, med_name_snapshot: 'Gabapentin', dose_snapshot: '50 mg by mouth', notes: null, ...o })
     const m = computeMetrics({ ...base, medLogs: [d({}), d({}), d({ status: 'missed' }), d({ cat_id: 'other' }), d({ given_at: '2026-10-01T14:00:00Z' })] })
-    expect(m.meds).toEqual([{ name: 'Gabapentin', dose: '50 mg by mouth', counts: { given: 2, missed: 1, refused: 0, partial: 0, vomited: 0 } }])
+    expect(m.meds).toMatchObject([{ name: 'Gabapentin', dose: '50 mg by mouth', counts: { given: 2, missed: 1, refused: 0, partial: 0, vomited: 0 } }])
+    // each dose keeps its local date, so a summary never claims the date "wasn't logged"
+    expect(m.meds![0].doses).toEqual([{ date: '2026-11-12', status: 'given' }, { date: '2026-11-12', status: 'given' }, { date: '2026-11-12', status: 'missed' }])
   })
 })

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useLoad, useSubmit } from '../lib/data'
-import { generateReview } from '../lib/review'
+import { friendlyReviewError, generateReview } from '../lib/review'
 import { useSession } from '../lib/session'
 import { fmtDay } from '../lib/time'
 import type { CareReport } from '../lib/types'
@@ -50,7 +50,7 @@ export default function Report() {
             const cat = cats.find(c => c.id === rep.cat_id); if (!cat) return
             setRegen('running')
             try { const n = await generateReview(cat, timezone); setRegen(null); if (n.id === rep.id) r.reload(); else nav(`/health/report/${n.id}`) }
-            catch (e) { setRegen((e as Error).message) }
+            catch (e) { setRegen(friendlyReviewError((e as Error).message)) }
           }}>{regen === 'running' ? 'Working…' : 'Create it again'}</Button>
           {regen && regen !== 'running' && <p className="text-sm">⚠ {regen}</p>}
         </div>

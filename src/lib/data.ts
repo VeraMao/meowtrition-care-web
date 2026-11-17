@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from './supabase'
-import type { FeedingLog, HydrationLog, LitterLog, MedicationLog, VetVisit, WeightLog } from './types'
+import type { FeedingLog, HydrationLog, LitterLog, Medication, MedicationLog, VetVisit, WeightLog } from './types'
 
 /** Tiny fetch hook: { data, error, loading, reload }. */
 export function useLoad<T>(fn: () => Promise<T>, deps: unknown[]) {
@@ -25,20 +25,22 @@ const must = <T,>(r: { data: T | null; error: { message: string } | null }) => {
 export interface WeekRows {
   feedings: FeedingLog[]; hydration: HydrationLog[]; litter: LitterLog[]; weights: WeightLog[]; visits: VetVisit[]
   medLogs: MedicationLog[]
+  medications: Medication[]
 }
 
 /** All rows for one cat (plus unknown-cat water/litter) between two instants. */
 export async function loadRows(catId: string, start: Date, end: Date): Promise<WeekRows> {
   const s = start.toISOString(), e = end.toISOString()
-  const [f, h, l, w, v, m] = await Promise.all([
+  const [f, h, l, w, v, m, md] = await Promise.all([
     supabase.from('feeding_logs').select('*').eq('cat_id', catId).gte('occurred_at', s).lt('occurred_at', e).order('occurred_at', { ascending: false }),
     supabase.from('hydration_logs').select('*').or(`cat_id.eq.${catId},cat_id.is.null`).gte('observed_at', s).lt('observed_at', e).order('observed_at', { ascending: false }),
     supabase.from('litter_logs').select('*').or(`cat_id.eq.${catId},cat_id.is.null`).gte('cleaned_at', s).lt('cleaned_at', e).order('cleaned_at', { ascending: false }),
     supabase.from('weight_logs').select('*').eq('cat_id', catId).gte('measured_at', s).lt('measured_at', e).order('measured_at', { ascending: false }),
     supabase.from('vet_visits').select('*').eq('cat_id', catId).order('visit_date', { ascending: false }),
     supabase.from('medication_logs').select('*').eq('cat_id', catId).gte('given_at', s).lt('given_at', e).order('given_at', { ascending: false }),
+    supabase.from('medications').select('*').eq('cat_id', catId),
   ])
-  return { feedings: must(f), hydration: must(h), litter: must(l), weights: must(w), visits: must(v), medLogs: must(m) }
+  return { feedings: must(f), hydration: must(h), litter: must(l), weights: must(w), visits: must(v), medLogs: must(m), medications: must(md) }
 }
 
 /** Client-side guard against double submits (the "simple idempotency" from the plan). */

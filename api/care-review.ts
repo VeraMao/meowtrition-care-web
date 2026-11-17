@@ -31,29 +31,41 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const w = weekEndingToday(new Date(), tz)
   const s = w.start.toISOString(), e = w.end.toISOString()
 
-  const [feedings, hydration, litter, weights, visits, medLogs] = await Promise.all([
+  const [feedings, hydration, litter, weights, visits, medLogs, medications] = await Promise.all([
     db.from('feeding_logs').select('*').eq('cat_id', catId).gte('occurred_at', s).lt('occurred_at', e),
     db.from('hydration_logs').select('*').or(`cat_id.eq.${catId},cat_id.is.null`).gte('observed_at', s).lt('observed_at', e),
     db.from('litter_logs').select('*').or(`cat_id.eq.${catId},cat_id.is.null`).gte('cleaned_at', s).lt('cleaned_at', e),
     db.from('weight_logs').select('*').eq('cat_id', catId).gte('measured_at', s).lt('measured_at', e),
     db.from('vet_visits').select('*').eq('cat_id', catId).order('visit_date', { ascending: false }).limit(5),
     db.from('medication_logs').select('*').eq('cat_id', catId).gte('given_at', s).lt('given_at', e),
+    db.from('medications').select('*').eq('cat_id', catId),
   ])
-  const failed = [feedings, hydration, litter, weights, visits, medLogs].find(r => r.error)
+  const failed = [feedings, hydration, litter, weights, visits, medLogs, medications].find(r => r.error)
   if (failed) return res.status(500).json({ error: 'load_failed', detail: failed.error?.message })
 
   const metrics = computeMetrics({
     cat, days: w.days, tz,
     feedings: feedings.data ?? [], hydration: hydration.data ?? [], litter: litter.data ?? [],
-    weights: weights.data ?? [], visits: visits.data ?? [], medLogs: medLogs.data ?? [],
+    weights: weights.data ?? [], visits: visits.data ?? [], medLogs: medLogs.data ?? [], medications: medications.data ?? [],
   })
 
-  const summary = await summarize(cat, metrics, { apiKey: process.env.ANTHROPIC_API_KEY, model: process.env.ANTHROPIC_MODEL })
+  const { data: quota } = await db.rpc('report_quota', { p_cat_id: catId })
+  const q = quota as { used: number; has_new_data: boolean; next_available_at: string | null } | null
+  if (q && !q.has_new_data) return res.status(409).json({ error: 'limit', detail: 'no_new_data' })
+  if (q && q.used >= 3) return res.status(409).json({ error: 'limit', detail: `weekly_limit:${q.next_available_at}` })
+
+  const summary = await summarize(cat, metrics, {
+    apiKey: process.env.ANTHROPIC_API_KEY, model: process.env.ANTHROPIC_MODEL,
+    openaiKey: process.env.OPENAI_API_KEY, openaiModel: process.env.OPENAI_MODEL,
+  })
 
   const { data: report, error } = await db.from('care_reports').upsert({
     cat_id: catId, period_start: s, period_end: e, metrics, summary,
     status: 'needs_review', approved_at: null, vet_draft_body: summary.vet_email, is_mock: summary.is_mock,
   }, { onConflict: 'owner_id,cat_id,period_start,period_end' }).select().single()
-  if (error) return res.status(500).json({ error: 'save_failed', detail: error.message })
+  if (error) {
+    const limited = /no_new_data|weekly_limit/.test(error.message)
+    return res.status(limited ? 409 : 500).json({ error: limited ? 'limit' : 'save_failed', detail: error.message })
+  }
   return res.status(200).json(report)
 }

@@ -5,7 +5,7 @@ from playwright.sync_api import sync_playwright
 
 USER = {"id": "00000000-0000-0000-0000-00000000000a", "email": "vera@test.dev", "aud": "authenticated", "role": "authenticated",
         "app_metadata": {}, "user_metadata": {}, "created_at": "2026-11-16T00:00:00Z"}
-DB = {t: [] for t in ["profiles","cats","foods","feeding_logs","hydration_logs","litter_logs","weight_logs","vet_visits","care_reports","medications","medication_logs"]}
+DB = {t: [] for t in ["profiles","cats","foods","feeding_logs","hydration_logs","litter_logs","weight_logs","vet_visits","care_reports","medications","medication_logs","api_keys","report_generations"]}
 DB["profiles"].append({"id": USER["id"], "timezone": "America/Chicago"})
 DEFAULTS = {"cats": {"sex":"unknown","is_demo":False,"archived_at":None,"daily_kcal_target":None,"birth_date":None,"neutered":None,"estimated_age_months":None},
             "litter_logs": {"symptoms": []}, "medications": {"archived_at": None, "end_date": None, "start_date": None},
@@ -47,6 +47,7 @@ def handle(route):
     if p.startswith("/auth/v1/token"): return J(session())
     if p == "/auth/v1/user": return J(USER)
     if p == "/auth/v1/logout": return route.fulfill(status=204)
+    if p == "/rest/v1/rpc/report_quota": return J(QUOTA)
     m = re.match(r"/rest/v1/(\w+)", p)
     if not m: return J({}, 404)
     t = m.group(1); rows = DB[t]
@@ -74,6 +75,7 @@ def handle(route):
         return J(res, 200)
     return J({}, 400)
 
+QUOTA = {"used": 0, "limit": 3, "next_available_at": None, "last_generated_at": None, "has_new_data": True}
 errors = []
 with sync_playwright() as pw:
     b = pw.chromium.launch(executable_path="/usr/bin/google-chrome", args=["--no-sandbox"])
@@ -185,13 +187,22 @@ with sync_playwright() as pw:
     pg.get_by_role("button", name="+ Add visit").click()
     pg.get_by_label("Reason for visit").fill("Annual check-up"); pg.get_by_label("What the vet said").fill("Healthy, slightly overweight")
     pg.get_by_role("button", name="Save visit").click(); pg.get_by_text("Annual check-up").wait_for()
+    # limits: no new data → Create disabled with a reason; then allowed
+    QUOTA.update(used=1, has_new_data=False); pg.reload()
+    pg.get_by_text("nothing new logged since your last review").wait_for()
+    assert pg.get_by_role("button", name="Create").is_disabled(), "Create must be disabled with no new data"
+    QUOTA.update(used=3, has_new_data=True, next_available_at="2026-11-24T00:27:39Z"); pg.reload()
+    pg.get_by_text("3 of 3 used in the last 7 days").wait_for()
+    assert pg.get_by_role("button", name="Create").is_disabled(), "Create must be disabled at 3/3"
+    QUOTA.update(used=1, has_new_data=True, next_available_at=None); pg.reload()
+    pg.get_by_text("1 of 3 used in the last 7 days").wait_for()
     pg.get_by_role("button", name="Create").click()
     pg.get_by_text("Email draft to your vet").wait_for()
     pg.screenshot(path="/tmp/e2e_7_report.png", full_page=True)
-    pg.get_by_text("Food: logged on 1/7 days, average 158 kcal").first.wait_for()   # BUG3: today's 42.5 kcal is included
-    pg.get_by_text("Water: logged on 1/7 days").first.wait_for()
+    pg.get_by_text("Food: logged on 1 of 7 days").first.wait_for(); pg.get_by_text("average 158 kcal per logged day").first.wait_for()   # BUG3: today's 42.5 kcal is included
+    pg.get_by_text("Water: logged on 1 of 7 days").first.wait_for()
     pg.get_by_text("doses logged this week: 1 given, 1 missed").first.wait_for()
-    pg.get_by_text("1 dose(s) of Gabapentin were missed").first.wait_for()
+    pg.get_by_text("One dose of Gabapentin was missed").first.wait_for()
     pg.get_by_text("Template · AI not set up").wait_for()          # P0-2: honest AI label
     # P0-1 UI: a stale review shows a banner, can't be approved, and must be re-created
     DB["care_reports"][0]["status"] = "stale"; pg.reload()

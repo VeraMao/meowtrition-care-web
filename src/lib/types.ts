@@ -76,7 +76,8 @@ export interface Metrics {
     unknownCatCleanings: number
   }
   weight: { points: DayValue[] }
-  meds?: { name: string; dose: string | null; counts: Record<MedStatus, number> }[]
+  meds?: { name: string; dose: string | null; counts: Record<MedStatus, number>; doses?: { date: string; status: MedStatus }[];
+           how_often?: string | null; course_start?: string | null; course_end?: string | null }[]
   urgent: boolean                      // fixed rule, no AI
   latestVisit: VetVisit | null
   upcomingCheckup: string | null

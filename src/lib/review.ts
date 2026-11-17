@@ -20,11 +20,12 @@ export async function generateReview(cat: Cat, timezone: string): Promise<CareRe
     })
     if (r.ok && r.headers.get('content-type')?.includes('json')) return await r.json()
     if (r.status !== 404 && r.headers.get('content-type')?.includes('json')) {
-      const j = await r.json(); throw new Error(j.detail ?? j.error ?? `HTTP ${r.status}`)
+      const j = await r.json(); throw new Error(friendlyReviewError(j.detail ?? j.error ?? `HTTP ${r.status}`))
     }
   } catch (e) {
     if (!(e instanceof TypeError)) throw e   // real server error: surface it; network error: fall back
   }
+  // Local dev has no /api: build the template version in the browser (same DB limits apply).
   const w = weekEndingToday(new Date(), timezone)
   const rows = await loadRows(cat.id, w.start, w.end)
   const metrics = computeMetrics({ cat, days: w.days, tz: timezone, ...rows })
@@ -33,6 +34,21 @@ export async function generateReview(cat: Cat, timezone: string): Promise<CareRe
     cat_id: cat.id, period_start: w.start.toISOString(), period_end: w.end.toISOString(), metrics, summary,
     status: 'needs_review', approved_at: null, vet_draft_body: summary.vet_email, is_mock: true,
   }, { onConflict: 'owner_id,cat_id,period_start,period_end' }).select().single()
-  if (error) throw new Error(error.message)
+  if (error) throw new Error(friendlyReviewError(error.message))
   return data as CareReport
+}
+
+export interface ReportQuota { used: number; limit: number; next_available_at: string | null; last_generated_at: string | null; has_new_data: boolean }
+
+export async function loadQuota(catId: string): Promise<ReportQuota | null> {
+  const { data, error } = await supabase.rpc('report_quota', { p_cat_id: catId })
+  return error ? null : (data as ReportQuota)
+}
+
+/** Turn the database's limit errors into plain sentences. */
+export function friendlyReviewError(message: string): string {
+  if (message.includes('no_new_data')) return 'Nothing new has been logged, changed or deleted since your last review, so a new one would be the same. Log something first.'
+  const m = message.match(/weekly_limit:(\S+)/)
+  if (m) return `You've used all 3 reviews for this cat in the last 7 days. Next one available ${new Date(m[1]).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}.`
+  return message
 }

@@ -55,4 +55,31 @@ describe('AI states are never mixed up', () => {
   it('number check also covers the vet email', () => {
     expect(() => validateSummary({ ...good, vet_email: 'She weighs 7.4 kg.' }, m, cat)).toThrow('unsupported_number:7.4')
   })
+
+  it('OpenAI key → uses OpenAI, same validation, labeled with its model', async () => {
+    let url = ''
+    const oa = (async (u: string) => { url = u; return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(good) } }] })) }) as unknown as typeof fetch
+    const s = await summarize(cat, m, { openaiKey: 'sk-x', openaiModel: 'my-model', fetchImpl: oa })
+    expect(url).toContain('api.openai.com'); expect(s.ai_status).toBe('ai'); expect(s.model).toBe('my-model')
+  })
+  it('OpenAI answer with an invented number is rejected the same way', async () => {
+    const bad = { ...good, vet_email: 'She ate 300 kcal.' }
+    const oa = reply({ choices: [{ message: { content: JSON.stringify(bad) } }] })
+    const s = await summarize(cat, m, { openaiKey: 'sk-x', openaiModel: 'my-model', fetchImpl: oa })
+    expect(s.ai_status).toBe('failed'); expect(s.ai_error).toBe('unsupported_number:300')
+  })
+  it('OpenAI key without a model name → failed with a clear reason, not a guess', async () => {
+    const s = await summarize(cat, m, { openaiKey: 'sk-x', fetchImpl: reply({}) })
+    expect(s.ai_status).toBe('failed'); expect(s.ai_error).toBe('openai_model_not_set')
+  })
+
+  it('facts given to the AI carry units and dose dates', async () => {
+    const { factLines } = await import('./summary')
+    const mm = computeMetrics({ cat, days, tz: 'America/Chicago', litter: [], weights: [], visits: [], feedings: [],
+      hydration: [{ id: 'h', cat_id: 'c1', observed_at: '2026-11-16T16:00:00Z', volume_ml: 100, method: 'estimated_drunk', notes: null }],
+      medLogs: [{ id: 'd', cat_id: 'c1', medication_id: 'x', given_at: '2026-11-16T17:00:00Z', status: 'refused', med_name_snapshot: 'Gabapentin', dose_snapshot: '50 mg', notes: null }],
+      medications: [{ id: 'x', cat_id: 'c1', name: 'Gabapentin', dose_as_prescribed: '50 mg', how_often: 'once daily', start_date: '2026-11-16', end_date: '2026-11-23', notes: null, archived_at: null }] })
+    const f = factLines(cat, mm).join(' ')
+    expect(f).toContain('100 mL'); expect(f).toContain('Nov 16 refused'); expect(f).toContain('Nov 16 to Mon, Nov 23')
+  })
 })

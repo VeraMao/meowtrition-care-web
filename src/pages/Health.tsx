@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useSession } from '../lib/session'
 import { supabase } from '../lib/supabase'
 import { useLoad, useSubmit } from '../lib/data'
-import { generateReview } from '../lib/review'
+import { friendlyReviewError, generateReview, loadQuota } from '../lib/review'
 import { localDate } from '../lib/time'
 import type { CareReport, VetVisit } from '../lib/types'
 import { Badge, Button, Card, Empty, Field, inputCls, PageFade } from '../components/ui'
@@ -19,13 +19,14 @@ export default function Health() {
     const { data, error } = await supabase.from('vet_visits').select('*').eq('cat_id', cat!.id).order('visit_date', { ascending: false })
     if (error) throw new Error(error.message); return data as VetVisit[]
   }, [cat?.id])
+  const quota = useLoad(() => loadQuota(cat!.id), [cat?.id])
   const [gen, setGen] = useState<'idle' | 'running' | string>('idle')
   const [editing, setEditing] = useState<VetVisit | 'new' | null>(null)
 
   const create = async () => {
     setGen('running')
     try { const r = await generateReview(cat!, timezone); nav(`/health/report/${r.id}`) }
-    catch (e) { setGen((e as Error).message) }
+    catch (e) { setGen(friendlyReviewError((e as Error).message)); quota.reload() }
   }
 
   return (
@@ -34,8 +35,9 @@ export default function Health() {
       <Card>
         <div className="flex items-center justify-between gap-3">
           <div><h2 className="font-semibold">Weekly review</h2><p className="text-sm text-muted">Last 7 days, including today so far. You review it before anything goes to a vet. Creating it again today updates the same review.</p></div>
-          <Button onClick={create} disabled={gen === 'running'}>{gen === 'running' ? 'Working…' : 'Create'}</Button>
+          <Button onClick={create} disabled={gen === 'running' || blocked(quota.data) !== null}>{gen === 'running' ? 'Working…' : 'Create'}</Button>
         </div>
+        {quota.data && <p className="mt-2 text-sm text-muted num">{quota.data.used} of {quota.data.limit} used in the last 7 days{blocked(quota.data) ? ` · ${blocked(quota.data)}` : ''}</p>}
         {gen !== 'idle' && gen !== 'running' && <p role="alert" className="mt-2 text-sm">⚠ Couldn't create: {gen}</p>}
         {reports.data && reports.data.length > 0 && (
           <ul className="mt-3 divide-y divide-line">
@@ -94,8 +96,8 @@ function VisitForm({ row, onDone }: { row?: VetVisit; onDone: () => void }) {
     <Card>
       <form className="space-y-4" onSubmit={e => { e.preventDefault(); save() }}>
         <Field label="Visit date">{id => <input id={id} type="date" required className={inputCls} value={f.visit_date} onChange={set('visit_date')} />}</Field>
-        <Field label="Reason for visit">{id => <input id={id} className={inputCls} value={f.reason} onChange={set('reason')} />}</Field>
-        <Field label="What the vet said" hint="Write it the way the vet said or wrote it.">{id => <textarea id={id} rows={3} className={inputCls + ' py-2'} value={f.diagnosis_as_written} onChange={set('diagnosis_as_written')} />}</Field>
+        <Field label="Reason for visit" hint="In English, please.">{id => <input id={id} className={inputCls} value={f.reason} onChange={set('reason')} />}</Field>
+        <Field label="What the vet said" hint="Write it the way the vet said or wrote it, in English, so the summary email reads clearly for your vet.">{id => <textarea id={id} rows={3} className={inputCls + ' py-2'} value={f.diagnosis_as_written} onChange={set('diagnosis_as_written')} />}</Field>
         <Field label="Medications" hint="Name and dose exactly as prescribed.">{id => <textarea id={id} rows={2} className={inputCls + ' py-2'} value={f.medications} onChange={set('medications')} />}</Field>
         <Field label="Next check-up (optional)">{id => <input id={id} type="date" className={inputCls} value={f.next_checkup_date} onChange={set('next_checkup_date')} />}</Field>
         <Field label="Notes (optional)">{id => <input id={id} className={inputCls} value={f.notes} onChange={set('notes')} />}</Field>
@@ -108,4 +110,11 @@ function VisitForm({ row, onDone }: { row?: VetVisit; onDone: () => void }) {
       </form>
     </Card>
   )
+}
+
+function blocked(q: { used: number; limit: number; has_new_data: boolean; next_available_at: string | null } | null): string | null {
+  if (!q) return null
+  if (!q.has_new_data) return 'nothing new logged since your last review'
+  if (q.used >= q.limit) return `next one available ${q.next_available_at ? new Date(q.next_available_at).toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' }) : 'later'}`
+  return null
 }
