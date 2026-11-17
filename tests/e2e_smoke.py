@@ -1,4 +1,4 @@
-# Usage: build with VITE_SUPABASE_URL=http://fake.supabase.test, run `npx vite preview --port 4173`, then `python3 tests/e2e_smoke.py`.
+# Usage: VITE_SUPABASE_URL=http://fake.supabase.test VITE_SUPABASE_ANON_KEY=anon npx vite --port 4173  (dev server: no /api, so "Create" uses the local template), then `python3 tests/e2e_smoke.py`.
 # Smoke test: real built app, Supabase faked in-memory at the network layer.
 import json, re, time, uuid, urllib.parse as up
 from playwright.sync_api import sync_playwright

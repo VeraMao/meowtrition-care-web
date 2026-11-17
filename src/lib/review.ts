@@ -10,20 +10,28 @@ import type { Cat, CareReport } from './types'
  * When that route isn't available (local `npm run dev` has no /api), builds the template summary
  * in the browser instead. Both paths save status needs_review; the template path is labeled is_mock.
  */
-export async function generateReview(cat: Cat, timezone: string): Promise<CareReport> {
+export async function generateReview(cat: Cat, timezone: string, opts: { isDev?: boolean } = {}): Promise<CareReport> {
+  const isDev = opts.isDev ?? import.meta.env.DEV
   const { data: s } = await supabase.auth.getSession()
+  let r: Response
   try {
-    const r = await fetch('/api/care-review', {
+    r = await fetch('/api/care-review', {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${s.session?.access_token ?? ''}` },
       body: JSON.stringify({ cat_id: cat.id }),
     })
-    if (r.ok && r.headers.get('content-type')?.includes('json')) return await r.json()
-    if (r.status !== 404 && r.headers.get('content-type')?.includes('json')) {
-      const j = await r.json(); throw new Error(friendlyReviewError(j.detail ?? j.error ?? `HTTP ${r.status}`))
-    }
-  } catch (e) {
-    if (!(e instanceof TypeError)) throw e   // real server error: surface it; network error: fall back
+  } catch {
+    throw new Error("Couldn't reach the server. Check your connection and try again.")
+  }
+  const isJson = r.headers.get('content-type')?.includes('json')
+  if (r.ok && isJson) return await r.json()
+  if (isJson) {
+    const j = await r.json(); throw new Error(friendlyReviewError(j.detail ?? j.error ?? `HTTP ${r.status}`))
+  }
+  // Only local dev (`npm run dev`, which has no /api) may fall back to the browser template.
+  // On the deployed site a missing or crashing route is a real error: say so, don't fake a review.
+  if (!(isDev && r.status === 404)) {
+    throw new Error(`The server had a problem creating the review (error ${r.status}). Nothing was saved; please try again in a minute.`)
   }
   // Local dev has no /api: build the template version in the browser (same DB limits apply).
   const w = weekEndingToday(new Date(), timezone)

@@ -1,9 +1,9 @@
 // Turns computed Metrics into a ReportSummary.
 // - templateSummary(): deterministic, no AI. Used when no AI key is configured (labeled is_mock).
 // - buildPrompt() + validateSummary(): used by api/care-review.ts when an AI key is configured.
-import type { Cat, Metrics, ReportSummary } from './types'
-import { SHAPE_LABELS, SYMPTOM_LABELS } from './types'
-import { fmtDay } from './time'
+import type { Cat, Metrics, ReportSummary } from './types.js'
+import { SHAPE_LABELS, SYMPTOM_LABELS } from './types.js'
+import { fmtDay } from './time.js'
 
 const list = (ds: string[]) => ds.map(fmtDay).join(', ')
 

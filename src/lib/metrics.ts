@@ -2,9 +2,9 @@
 // it only writes about what this file returns. Shared by the browser and api/care-review.ts.
 import type {
   Cat, DayValue, FeedingLog, HydrationLog, LitterLog, Medication, MedicationLog, Metrics, Symptom, VetVisit, WeightLog,
-} from './types'
-import { URGENT_SYMPTOMS } from './types'
-import { addDays, localDate } from './time'
+} from './types.js'
+import { URGENT_SYMPTOMS } from './types.js'
+import { addDays, localDate } from './time.js'
 
 export function isUrgent(symptoms: Symptom[]): boolean {
   return symptoms.some(s => URGENT_SYMPTOMS.includes(s))

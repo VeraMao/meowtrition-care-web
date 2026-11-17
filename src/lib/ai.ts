@@ -1,7 +1,7 @@
 // Writes the summary text with AI when a key is configured; otherwise (or on any failure) falls back
 // to the fixed template and SAYS SO via ai_status. Numbers always come from computeMetrics, never from AI.
-import type { Cat, Metrics, ReportSummary } from './types'
-import { buildPrompt, SYSTEM_PROMPT, templateSummary, validateSummary } from './summary'
+import type { Cat, Metrics, ReportSummary } from './types.js'
+import { buildPrompt, SYSTEM_PROMPT, templateSummary, validateSummary } from './summary.js'
 
 export interface AiOptions {
   /** Anthropic key (used first if both are set) */
