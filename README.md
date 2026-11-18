@@ -1,9 +1,6 @@
 # Meowtrition Care Agent (web)
 
-A cat-care log with an honest weekly review for your vet. Owners log food, water, litter, weight, medication doses and vet visits; the app computes the numbers, AI writes the summary and a vet email draft, and the owner reviews it before anything leaves the app. Nothing is ever sent automatically.
-
-Built for the AI Builder Curriculum 201–401 reps. Plan: `../Meowtrition_3Day_Plan_v2.md`.
-Separate from the iOS project (`~/Desktop/Meowtrition`) and the V3 prototype (`~/Desktop/meowtrition_v3`).
+A cat-care log with a weekly review for your vet. Owners log food, water, litter, weight, medication doses and vet visits; the app computes the numbers, AI writes the summary and a vet email draft, and the owner reviews it before anything leaves the app. Nothing is ever sent automatically.
 
 **Stack:** Vite + React + TypeScript + Tailwind · Supabase (Postgres, Auth, RLS) · Vercel (static site + 2 serverless functions) · Motion · OpenAI or Anthropic for summary text · MCP for the Claude connector.
 
