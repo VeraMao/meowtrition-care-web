@@ -92,7 +92,11 @@ Never give an AI key a `VITE_` prefix (it would be bundled into the website). Ne
 
 1. In the deployed app: Profile → Connect Claude → Create connector key → copy the address (shown once).
 2. In Claude: add it as a custom connector. Tools: `get_care_data` (read-only, your cats only) and `save_vet_visit` (only after you confirm a specific visit).
-3. The `meowtrition-care-review` Skill turns this data plus clinic emails in Gmail into the weekly review; a scheduled task runs it every Monday morning and stops for your review.
+3. Use `../meowtrition-care-review/SKILL.md` (v0.2). It reads app logs directly and combines them with the owner's chosen medical source: Gmail, an uploaded PDF/photo in the AI host, or an authorized Google Drive file/folder link. Notion is not a staging area or prerequisite.
+4. A weekly task must be separately configured and tested in a host that can actually use the app connector plus Gmail or Drive. The intended default is Monday 09:00 America/Chicago. No scheduler is created by this repository or by uploading the Skill.
+5. Each run returns a review and vet email text in the AI host and stops at `needs_review`. The current connector does not save weekly reports back into the app. Saving a specific new vet visit is optional and requires the owner's explicit confirmation.
+
+See `docs/direct-care-workflow.md` for the source choices, recurring-run prompt and verification checklist. A one-off chat upload is supported as review input; the website itself does not yet provide medical file upload or Drive linking UI. Upload-only inputs cannot be assumed to persist into future scheduled runs.
 
 ### Accepted risk (documented on purpose)
 Supabase's security advisor warns that `skill_export` and `skill_save_vet_visit` are `SECURITY DEFINER` functions callable by `anon`. This is intentional: Claude never logs in, so the personal key is the credential. Both functions check the key first and only touch that key owner's rows (verified on the live DB: wrong/revoked keys rejected, no cross-user reads or writes). Anyone holding a key can call the functions directly, which is the same access as the connector. Keys are 256-bit random; treat one like a password and disconnect it if it leaks.

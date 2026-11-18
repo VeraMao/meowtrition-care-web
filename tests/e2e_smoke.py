@@ -44,6 +44,7 @@ def filt(rows, q):
 def handle(route):
     req = route.request; u = up.urlparse(req.url); q = up.parse_qs(u.query); p = u.path
     J = lambda body, s=200: route.fulfill(status=s, content_type="application/json", body=json.dumps(body))
+    if p.startswith("/auth/v1/authorize"): return route.fulfill(status=200, content_type="text/html", body="<p>fake google</p>")
     if p.startswith("/auth/v1/token"): return J(session())
     if p == "/auth/v1/user": return J(USER)
     if p == "/auth/v1/logout": return route.fulfill(status=204)
@@ -85,8 +86,17 @@ with sync_playwright() as pw:
     pg.route("**/api/care-review", lambda r: r.fulfill(status=404, body="nope"))
     pg.goto("http://localhost:4173")
     pg.screenshot(path="/tmp/e2e_1_login.png")
+    # Google sign-in: the button sends the browser to Supabase's Google authorize URL, returning to this site
+    with pg.expect_request(lambda r: "/auth/v1/authorize" in r.url) as req:
+        pg.get_by_role("button", name="Continue with Google").click()
+    q = up.parse_qs(up.urlparse(req.value.url).query)
+    assert q.get("provider") == ["google"], q
+    assert q.get("redirect_to", [""])[0].startswith("http://localhost:4173"), q
+    pg.goto("http://localhost:4173")
+    # email fallback still works
+    pg.get_by_role("button", name="No Google account? Use email instead").click()
     pg.get_by_label("Email").fill("vera@test.dev"); pg.get_by_label("Password").fill("secret123")
-    pg.get_by_role("button", name="Sign in").click()
+    pg.get_by_role("button", name="Sign in with email").click()
     pg.get_by_text("Add your first cat").wait_for()
     pg.get_by_label("Name").fill("Mochi"); pg.get_by_label("Daily kcal target (optional)").fill("200")
     pg.get_by_role("tab", name="Yes").click(); pg.get_by_role("tab", name="Female").click(); pg.wait_for_timeout(300)
